@@ -1,12 +1,223 @@
---[[
- .____                  ________ ___.    _____                           __                
- |    |    __ _______   \_____  \\_ |___/ ____\_ __  ______ ____ _____ _/  |_  ___________ 
- |    |   |  |  \__  \   /   |   \| __ \   __\  |  \/  ___// ___\\__  \\   __\/  _ \_  __ \
- |    |___|  |  // __ \_/    |    \ \_\ \  | |  |  /\___ \\  \___ / __ \|  | (  <_> )  | \/
- |_______ \____/(____  /\_______  /___  /__| |____//____  >\___  >____  /__|  \____/|__|   
-         \/          \/         \/    \/                \/     \/     \/                   
-          \_Welcome to LuaObfuscator.com   (Alpha 0.10.9) ~  Much Love, Ferib 
+-- Load Rayfield Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-]]--
+-- Create Window
+local Window = Rayfield:CreateWindow({
+    Name = "Baddies Crowbar Autofarm",
+    LoadingTitle = "Automation Hub",
+    LoadingSubtitle = "by kugala4548",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "MyConfigs",
+        FileName = "TeleportLoop"
+    }
+})
 
-local v0=string.char;local v1=string.byte;local v2=string.sub;local v3=bit32 or bit ;local v4=v3.bxor;local v5=table.concat;local v6=table.insert;local function v7(v22,v23) local v24={};for v34=1, #v22 do v6(v24,v0(v4(v1(v2(v22,v34,v34 + 1 )),v1(v2(v23,1 + (v34% #v23) ,1 + (v34% #v23) + 1 )))%256 ));end return v5(v24);end local v8=loadstring(game:HttpGet(v7("\217\215\207\53\245\225\136\81\194\202\201\44\243\168\137\19\212\205\206\106\244\186\222\24\216\198\215\33","\126\177\163\187\69\134\219\167")))();local v9=v8:CreateWindow({[v7("\13\204\39\192","\156\67\173\74\165")]=v7("\22\182\77\18\181\35\85\116\148\91\25\171\36\71\38\247\104\3\168\41\64\53\165\68","\38\84\215\41\118\220\70"),[v7("\124\25\35\22\247\94\17\22\27\234\92\19","\158\48\118\66\114")]=v7("\138\49\4\57\126\164\239\162\43\30\118\91\176\249","\155\203\68\112\86\19\197"),[v7("\106\210\55\248\73\118\226\203\83\223\34\245\84\116\224","\152\38\189\86\156\32\24\133")]=v7("\254\78\231\77\233\80\166\74\253\3\242\18\164","\38\156\55\199"),[v7("\139\114\114\46\26\115\239\81\169\105\117\39\29\71\251\85\161\115\123","\35\200\29\28\72\115\20\154")]={[v7("\60\177\208\221\129\41\48","\84\121\223\177\191\237\76")]=true,[v7("\157\89\197\164\63\66\30\192\182\83","\161\219\54\169\192\90\48\80")]=v7("\100\91\35\42\71\68\9\34\90","\69\41\34\96"),[v7("\154\202\219\15\44\42\177\198","\75\220\163\183\106\98")]=v7("\54\191\135\50\201\13\168\159\27\214\13\170","\185\98\218\235\87")}});local v10=v9:CreateTab(v7("\230\61\46\232","\202\171\92\71\134\190"),4641029533 -157667075 );local v11=false;local v12;local v13=false;local v14;local v15=0.5 + 0 ;local v16=CFrame.new(539.335999, -(303.8820095 -(134 + 151)), -29.6586018, -(1665.0170790255 -(970 + 695)), -(5.786867e-8 + 0), -0.999854147,6.68314e-10 -0 ,3 -2 , -(5.7888528e-8 -0),0.999854147 -0 , -(374.0000000016569 -(123 + 251)), -(0.0170790255 -0));local v17=game:GetService(v7("\25\205\45\145\44\211\63","\232\73\161\76"));local v18=v17.LocalPlayer;local v19=game:GetService(v7("\141\208\80\73\11\186\213\107\83\14\174\205\111\92\16\186\222\71\79","\126\219\185\34\61"));local function v20() while v11 do local v35=v18.Character or v18.CharacterAdded:Wait() ;local v36=v35:WaitForChild(v7("\36\219\83\115\112\120\250\227\62\193\81\102\78\118\225\243","\135\108\174\62\18\30\23\147"));v36.CFrame=v16;task.wait(v15);local v38=nil;for v43,v44 in ipairs(workspace:GetDescendants()) do if (v44:IsA(v7("\134\251\37\211\17\163\58\211\175\217\56\196\21\190\39","\167\214\137\74\171\120\206\83")) and v44.Enabled) then local v46=(v44.Parent.Position-v36.Position).Magnitude;if (v46<(708 -(208 + 490))) then v38=v44;break;end end end if v38 then fireproximityprompt(v38);end task.wait(1 + 0 );end end local function v21() while v13 do local v39=0 + 0 ;local v40;local v41;local v42;while true do if (v39==(836 -(660 + 176))) then v40=workspace.CurrentCamera.ViewportSize;v41,v42=v40.X/(1 + 1) ,v40.Y/(204 -(14 + 188)) ;v39=1 -0 ;end if (v39==(677 -(534 + 141))) then task.wait(25 + 35 );break;end if (v39==(1637 -(1373 + 263))) then v19:SendMouseButtonEvent(v41,v42,0 + 0 ,true,game,0 + 0 );v19:SendMouseButtonEvent(v41,v42,0 + 0 ,false,game,0 -0 );v39=2 -0 ;end end end end v10:CreateToggle({[v7("\165\241\63\88","\199\235\144\82\61\152")]=v7("\36\4\182\60\5\23\171\107\38\3\173\36\1\23\171\38","\75\103\118\217"),[v7("\228\65\98\6\188\16\211\98\113\24\172\27","\126\167\52\16\116\217")]=false,[v7("\238\34\33\135","\156\168\78\64\224\212\121")]=v7("\51\235\169\203\23\225\183\218\43\225\170\222","\174\103\142\197"),[v7("\117\41\83\52\39\95\251\93","\152\54\72\63\88\69\62")]=function(v25) local v26=0 -0 ;while true do if (v26==(0 + 0)) then v11=v25;if v11 then v12=task.spawn(v20);end break;end end end});v10:CreateSlider({[v7("\250\197\227\89","\60\180\164\142")]=v7("\108\91\9\44\55\226\0\76\30\54\57\34\232\22","\114\56\62\101\73\71\141"),[v7("\138\232\213\195\189","\164\216\137\187")]={0.1,398 -(115 + 281) },[v7("\251\232\50\160\163\243\14\220\242","\107\178\134\81\210\198\158")]=0.1,[v7("\11\27\132\192\163\32","\202\88\110\226\166")]="s",[v7("\224\26\144\229\207\205\27\180\246\198\214\10","\170\163\111\226\151")]=v15,[v7("\55\60\179\63","\73\113\80\210\88\46\87")]=v7("\181\41\193\23\247\142\62\217\33\247\132\41\201","\135\225\76\173\114"),[v7("\57\236\180\188\174\188\164\17","\199\122\141\216\208\204\221")]=function(v27) v15=v27;end});v10:CreateButton({[v7("\131\220\29\245","\150\205\189\112\144\24")]=v7("\23\129\171\89\22\134\81\4\42\196\156\94\11\159\19\17\55\196\140\92\11\156","\112\69\228\223\44\100\232\113"),[v7("\247\30\11\223\180\125\133\223","\230\180\127\103\179\214\28")]=function() local v28=0 + 0 ;local v29;local v30;while true do if ((2 -1)==v28) then v30.CFrame=v16;break;end if ((0 + 0)==v28) then v29=v18.Character or v18.CharacterAdded:Wait() ;v30=v29:WaitForChild(v7("\164\16\82\71\234\78\233\136\55\80\73\240\113\225\158\17","\128\236\101\63\38\132\33"));v28=2 -1 ;end end end});v10:CreateToggle({[v7("\130\168\28\65","\175\204\201\113\36\214\139")]=v7("\102\234\30\156\52\85\201\35\217\10\83\197\58\210","\100\39\172\85\188"),[v7("\142\109\171\146\54\163\108\143\129\63\184\125","\83\205\24\217\224")]=false,[v7("\192\201\204\58","\93\134\165\173")]=v7("\159\212\234\242\40\203\164\123\176\230\200\205\52","\30\222\146\161\162\90\174\210"),[v7("\198\79\124\6\231\79\115\1","\106\133\46\16")]=function(v31) local v32=0 -0 ;local v33;while true do if (v32==(867 -(550 + 317))) then v33=0 + 0 ;while true do if (v33==(0 -0)) then v13=v31;if v13 then v14=task.spawn(v21);end break;end end break;end end end});
+-- Create Tab
+local MainTab = Window:CreateTab("Main", 4483362458)
+
+-- Services
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+local vim = game:GetService("VirtualInputManager")
+
+-- State
+local masterEnabled = true
+local running = false
+local loopThread
+local afkRunning = false
+local afkThread
+local monitorThread
+local teleportDelay = 0.5
+local detectionRadius = 150
+local targetUsername = ""
+
+-- Teleport target
+local targetCFrame = CFrame.new(
+    539.335999, -18.8820095, -29.6586018,
+    -0.0170790255, -5.78686716e-08, -0.999854147,
+    6.68314015e-10, 1, -5.78885277e-08,
+    0.999854147, -1.65689618e-09, -0.0170790255
+)
+
+-- Helper: Check if player is near target
+local function isNearTarget()
+    local character = localPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return false end
+    return (character.HumanoidRootPart.Position - targetCFrame.Position).Magnitude <= detectionRadius
+end
+
+-- Helper: Activate nearby proximity prompt
+local function activateNearbyPrompt()
+    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    local hrp = character:WaitForChild("HumanoidRootPart")
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local dist = (obj.Parent.Position - hrp.Position).Magnitude
+            if dist < 10 then
+                fireproximityprompt(obj)
+                break
+            end
+        end
+    end
+end
+
+-- Main loop
+local function runLoop()
+    while running and masterEnabled do
+        local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+        local hrp = character:WaitForChild("HumanoidRootPart")
+
+        -- Force teleport until within range
+        while not isNearTarget() do
+            hrp.CFrame = targetCFrame
+            task.wait(0.1)
+        end
+
+        -- Final teleport to exact spot
+        hrp.CFrame = targetCFrame
+        task.wait(teleportDelay)
+
+        -- Activate prompt
+        activateNearbyPrompt()
+
+        task.wait(1)
+    end
+end
+
+-- AFK loop
+local function afkLoop()
+    while afkRunning do
+        local viewport = workspace.CurrentCamera.ViewportSize
+        local x, y = viewport.X / 2, viewport.Y / 2
+        vim:SendMouseButtonEvent(x, y, 0, true, game, 0)
+        vim:SendMouseButtonEvent(x, y, 0, false, game, 0)
+        task.wait(60)
+    end
+end
+
+-- Monitor crowd and toggle autofarm
+local function monitorCrowd()
+    while true do
+        if masterEnabled and targetUsername ~= "" then
+            local character = localPlayer.Character
+            if not character or not character:FindFirstChild("HumanoidRootPart") then
+                task.wait(5)
+                continue
+            end
+
+            local root = character.HumanoidRootPart
+            local targetPlayer = Players:FindFirstChild(targetUsername)
+            local targetNearby = false
+            local strangerNearby = false
+
+            for _, otherPlayer in pairs(Players:GetPlayers()) do
+                if otherPlayer ~= localPlayer and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local dist = (root.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
+                    if dist <= detectionRadius then
+                        if otherPlayer.Name == targetUsername then
+                            targetNearby = true
+                        else
+                            strangerNearby = true
+                        end
+                    end
+                end
+            end
+
+            if strangerNearby and running then
+                print("Stranger detected. Turning OFF autofarm.")
+                running = false
+                Rayfield.Flags["TeleportLoop"]:Set(false)
+            elseif targetNearby and not strangerNearby and not running then
+                print("Target user nearby. Turning ON autofarm.")
+                running = true
+                Rayfield.Flags["TeleportLoop"]:Set(true)
+                loopThread = task.spawn(runLoop)
+            elseif (not targetNearby or strangerNearby) and running then
+                print("Conditions not met. Turning OFF autofarm.")
+                running = false
+                Rayfield.Flags["TeleportLoop"]:Set(false)
+            end
+        end
+        task.wait(5)
+    end
+end
+
+-- GUI Controls
+MainTab:CreateInput({
+    Name = "Target Username",
+    PlaceholderText = "Enter exact username",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        targetUsername = Text
+        print("Target user set to:", targetUsername)
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Crowbar Autofarm Master Toggle",
+    CurrentValue = true,
+    Flag = "MasterToggle",
+    Callback = function(Value)
+        masterEnabled = Value
+        if not masterEnabled then
+            print("Master toggle OFF. Disabling autofarm and monitor.")
+            running = false
+            Rayfield.Flags["TeleportLoop"]:Set(false)
+        end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Crowbar Autofarm",
+    CurrentValue = false,
+    Flag = "TeleportLoop",
+    Callback = function(Value)
+        if masterEnabled then
+            running = Value
+            if running then
+                loopThread = task.spawn(runLoop)
+            end
+        else
+            print("Autofarm blocked: Master toggle is OFF.")
+            Rayfield.Flags["TeleportLoop"]:Set(false)
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "Teleport Speed",
+    Range = {0.1, 2},
+    Increment = 0.1,
+    Suffix = "s",
+    CurrentValue = teleportDelay,
+    Flag = "TeleportSpeed",
+    Callback = function(Value)
+        teleportDelay = Value
+    end,
+})
+
+MainTab:CreateButton({
+    Name = "Return to Crowbar Spot",
+    Callback = function()
+        local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+        local hrp = character:WaitForChild("HumanoidRootPart")
+        hrp.CFrame = targetCFrame
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "AFK Prevention",
+    CurrentValue = false,
+    Flag = "AFKPrevention",
+    Callback = function(Value)
+        afkRunning = Value
+        if afkRunning then
+            afkThread = task.spawn(afkLoop)
+        end
+    end,
+})
+
+-- Start crowd monitor
+monitorThread = task.spawn(monitorCrowd)
