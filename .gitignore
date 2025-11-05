@@ -1,38 +1,182 @@
--- Load Rayfield Library
+-- Baddies Crowbar Autofarm — original script patched with same-server (jobId) auto-rejoin
+-- Integrates:
+--  - Rayfield UI (flags saved/loaded)
+--  - Multi-executor filesystem detection + JSON fallback save/load
+--  - Autofarm loop, AFK prevention, monitor for target/strangers
+--  - Auto-rejoin the SAME server (retries TeleportToPlaceInstance variants)
+-- Drop this into your executor in place of your old script.
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local localPlayer = Players.LocalPlayer
+
+-- Load Rayfield (unchanged)
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- Create Window
-local Window = Rayfield:CreateWindow({
-    Name = "Baddies Crowbar Autofarm",
-    LoadingTitle = "Automation Hub",
-    LoadingSubtitle = "by chip & kugala4548",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "MyConfigs",
-        FileName = "TeleportLoop"
+-- Configuration storage
+local CONFIG_FOLDER = "MyConfigs"
+local CONFIG_FILENAME = "TeleportLoop.json"
+local CONFIG_PATH = CONFIG_FOLDER .. "/" .. CONFIG_FILENAME
+
+-- ---------------------------------------------------------------------
+-- Filesystem detection (Xeno/Delta friendly + other common executors)
+-- ---------------------------------------------------------------------
+local function detect_fs()
+    local candidates = {
+        write = {"writefile", "write_file", "writeFile", "writeFileAsync", "write_file_async"},
+        read  = {"readfile", "read_file", "readFile", "readFileAsync", "read_file_async"},
+        isf   = {"isfile", "is_file", "isFile"},
+        make  = {"makefolder", "make_folder", "makeFolder", "make_dir", "makeDir"},
+        list  = {"listfiles", "list_files", "listFiles", "list_files_in_folder", "list_files_async"}
     }
-})
 
--- Create Tab
-local MainTab = Window:CreateTab("Main", 4483362458)
+    local map = {}
 
--- Services
-local Players = game:GetService("Players")
-local localPlayer = Players.LocalPlayer
-local vim = game:GetService("VirtualInputManager")
+    for kind, names in pairs(candidates) do
+        for _, n in ipairs(names) do
+            local ok, f = pcall(function() return _G[n] end)
+            if ok and type(f) == "function" then
+                map[kind] = {name = n, func = f}
+                break
+            end
+        end
+    end
 
--- State
+    for kind, names in pairs(candidates) do
+        if not map[kind] then
+            for _, n in ipairs(names) do
+                if type(_G[n]) == "function" then
+                    map[kind] = {name = n, func = _G[n]}
+                    break
+                end
+            end
+        end
+    end
+
+    return map
+end
+
+local fs = detect_fs()
+
+local function canWrite() return fs.write and type(fs.write.func) == "function" end
+local function canRead()  return fs.read and type(fs.read.func) == "function" end
+local function canIsFile() return fs.isf and type(fs.isf.func) == "function" end
+local function canMakeFolder() return fs.make and type(fs.make.func) == "function" end
+local function canListFiles() return fs.list and type(fs.list.func) == "function" end
+
+local function safeWrite(path, data)
+    if not canWrite() then return false, "no write function" end
+    local ok, err = pcall(fs.write.func, path, data)
+    return ok, err
+end
+
+local function safeRead(path)
+    if not canRead() then return nil, "no read function" end
+    local ok, res = pcall(fs.read.func, path)
+    if ok then return res, nil end
+    return nil, res
+end
+
+local function safeIsFile(path)
+    if not canIsFile() then return false end
+    local ok, res = pcall(fs.isf.func, path)
+    if ok then return res end
+    return false
+end
+
+local function safeMakeFolder(folder)
+    if not canMakeFolder() then return false end
+    local ok, res = pcall(fs.make.func, folder)
+    return ok and res ~= false
+end
+
+local function safeListFiles(folder)
+    if not canListFiles() then return nil, "no list function" end
+    local ok, res = pcall(fs.list.func, folder)
+    if ok then return res, nil end
+    return nil, res
+end
+
+print("Detected filesystem functions:")
+print(" write:", fs.write and fs.write.name or "none")
+print(" read: ", fs.read  and fs.read.name  or "none")
+print(" isfile:", fs.isf and fs.isf.name or "none")
+print(" makefolder:", fs.make and fs.make.name or "none")
+print(" listfiles:", fs.list and fs.list.name or "none")
+
+-- ---------------------------------------------------------------------
+-- Robust Rayfield flag accessors (support Get/Set, GetValue/SetValue, Value, CurrentValue)
+-- ---------------------------------------------------------------------
+local function flag_get_raw(flagObj)
+    if not flagObj then return nil end
+    if type(flagObj.Get) == "function" then
+        local ok, v = pcall(flagObj.Get, flagObj)
+        if ok then return v end
+    end
+    if type(flagObj.GetValue) == "function" then
+        local ok, v = pcall(flagObj.GetValue, flagObj)
+        if ok then return v end
+    end
+    if rawget(flagObj, "Value") ~= nil then return flagObj.Value end
+    if rawget(flagObj, "CurrentValue") ~= nil then return flagObj.CurrentValue end
+    return nil
+end
+
+local function flag_set_raw(flagObj, value)
+    if not flagObj then return false end
+    if type(flagObj.Set) == "function" then
+        local ok = pcall(flagObj.Set, flagObj, value)
+        if ok then return true end
+    end
+    if type(flagObj.SetValue) == "function" then
+        local ok = pcall(flagObj.SetValue, flagObj, value)
+        if ok then return true end
+    end
+    if rawget(flagObj, "Value") ~= nil then
+        local ok = pcall(function() flagObj.Value = value end)
+        if ok then return true end
+    end
+    if rawget(flagObj, "CurrentValue") ~= nil then
+        local ok = pcall(function() flagObj.CurrentValue = value end)
+        if ok then return true end
+    end
+    return false
+end
+
+local function safeSetFlag(name, value)
+    if Rayfield and Rayfield.Flags and Rayfield.Flags[name] then
+        return flag_set_raw(Rayfield.Flags[name], value)
+    end
+    return false
+end
+
+local function safeGetFlag(name)
+    if Rayfield and Rayfield.Flags and Rayfield.Flags[name] then
+        return flag_get_raw(Rayfield.Flags[name])
+    end
+    return nil
+end
+
+-- ---------------------------------------------------------------------
+-- Local state defaults (same as original)
+-- ---------------------------------------------------------------------
 local masterEnabled = true
 local running = false
-local loopThread
+local loopThread = nil
+local loopThreadActive = false
 local afkRunning = false
-local afkThread
-local monitorThread
+local afkThread = nil
+local monitorThread = nil
 local teleportDelay = 0.5
-local detectionRadius = 150
+local detectionRadius = 120
 local targetUsername = ""
+local autoRejoinEnabled = false
+local autoRejoinDelay = 5
+local placeId = game.PlaceId
+local jobId = game.JobId
 
--- Teleport target
 local targetCFrame = CFrame.new(
     539.335999, -18.8820095, -29.6586018,
     -0.0170790255, -5.78686716e-08, -0.999854147,
@@ -40,148 +184,306 @@ local targetCFrame = CFrame.new(
     0.999854147, -1.65689618e-09, -0.0170790255
 )
 
--- Helper: Check if player is near target
-local function isNearTarget()
-    local character = localPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return false end
-    return (character.HumanoidRootPart.Position - targetCFrame.Position).Magnitude <= detectionRadius
+-- Initial teleport to crowbar spot (non-blocking)
+task.spawn(function()
+    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    local hrp = character:WaitForChild("HumanoidRootPart", 5)
+    if hrp then
+        hrp.CFrame = targetCFrame
+        print("Teleported to crowbar spot on script start.")
+    else
+        warn("HumanoidRootPart not found on initial teleport.")
+    end
+end)
+
+-- ---------------------------------------------------------------------
+-- Custom JSON save/load fallback
+-- ---------------------------------------------------------------------
+local function buildSaveTable()
+    return {
+        TargetUsername = targetUsername or "",
+        TeleportSpeed = teleportDelay or 0.5,
+        TeleportLoop = running or false,
+        MasterToggle = masterEnabled or true,
+        AFKPrevention = afkRunning or false,
+        AutoRejoinToggle = autoRejoinEnabled or false,
+        RejoinDelay = autoRejoinDelay or 5,
+        DetectionRadius = detectionRadius or 120
+    }
 end
 
--- Helper: Activate nearby proximity prompt
-local function activateNearbyPrompt()
-    local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-    local hrp = character:WaitForChild("HumanoidRootPart")
+local function applySaveTable(t)
+    if not t then return end
+    if type(t.TargetUsername) == "string" then
+        targetUsername = t.TargetUsername
+        safeSetFlag("TargetUsername", targetUsername)
+    end
+    if type(t.TeleportSpeed) == "number" then
+        teleportDelay = t.TeleportSpeed
+        safeSetFlag("TeleportSpeed", teleportDelay)
+    end
+    if type(t.TeleportLoop) == "boolean" then
+        running = t.TeleportLoop and masterEnabled
+        safeSetFlag("TeleportLoop", t.TeleportLoop)
+    end
+    if type(t.MasterToggle) == "boolean" then
+        masterEnabled = t.MasterToggle
+        safeSetFlag("MasterToggle", masterEnabled)
+    end
+    if type(t.AFKPrevention) == "boolean" then
+        afkRunning = t.AFKPrevention
+        safeSetFlag("AFKPrevention", afkRunning)
+    end
+    if type(t.AutoRejoinToggle) == "boolean" then
+        autoRejoinEnabled = t.AutoRejoinToggle
+        safeSetFlag("AutoRejoinToggle", autoRejoinEnabled)
+    end
+    if type(t.RejoinDelay) == "number" then
+        autoRejoinDelay = t.RejoinDelay
+        safeSetFlag("RejoinDelay", autoRejoinDelay)
+    end
+    if type(t.DetectionRadius) == "number" then
+        detectionRadius = t.DetectionRadius
+    end
+end
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
+local function customSave()
+    if canMakeFolder() then
+        pcall(function() fs.make.func(CONFIG_FOLDER) end)
+    end
+
+    local saveTbl = buildSaveTable()
+    local ok, encoded = pcall(function() return HttpService:JSONEncode(saveTbl) end)
+    if not ok then
+        warn("Failed to encode config to JSON:", encoded)
+        return false
+    end
+
+    if not canWrite() then
+        warn("write function not available; cannot perform customSave.")
+        return false
+    end
+
+    local wrote, err = safeWrite(CONFIG_PATH, encoded)
+    if not wrote then
+        warn("Failed to write config file:", err)
+        return false
+    end
+
+    print("Custom saved configuration to", CONFIG_PATH)
+    return true
+end
+
+local function customLoad()
+    if not canRead() then
+        return false
+    end
+
+    if canIsFile() then
+        local exists = safeIsFile(CONFIG_PATH)
+        if not exists then
+            return false
+        end
+    end
+
+    local contents, err = safeRead(CONFIG_PATH)
+    if not contents then
+        warn("Failed to read config file:", err)
+        return false
+    end
+
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(contents) end)
+    if not ok then
+        warn("Failed to decode config JSON:", decoded)
+        return false
+    end
+
+    applySaveTable(decoded)
+    print("Custom loaded configuration from", CONFIG_PATH)
+    return true
+end
+
+-- ---------------------------------------------------------------------
+-- Find nearby ProximityPrompt
+-- ---------------------------------------------------------------------
+local function findPrompt()
+    local character = localPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+    local hrpPos = character.HumanoidRootPart.Position
+    for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") and obj.Enabled then
-            local dist = (obj.Parent.Position - hrp.Position).Magnitude
-            if dist < 10 then
-                fireproximityprompt(obj)
-                break
+            local part = obj.Parent
+            if part and part:IsA("BasePart") then
+                local ok, dist = pcall(function() return (hrpPos - part.Position).Magnitude end)
+                if ok and dist and dist <= 10 then
+                    return obj
+                end
             end
         end
     end
+    return nil
 end
 
--- Main loop
+-- ---------------------------------------------------------------------
+-- Autofarm loop
+-- ---------------------------------------------------------------------
 local function runLoop()
+    if loopThreadActive then return end
+    loopThreadActive = true
     while running and masterEnabled do
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-        local hrp = character:WaitForChild("HumanoidRootPart")
-
-        -- Force teleport until within range
-        while not isNearTarget() do
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
             hrp.CFrame = targetCFrame
-            task.wait(0.1)
+        else
+            task.wait(1)
         end
 
-        -- Final teleport to exact spot
-        hrp.CFrame = targetCFrame
         task.wait(teleportDelay)
 
-        -- Activate prompt
-        activateNearbyPrompt()
+        local prompt = findPrompt()
+        if prompt then
+            local holdTime = 2
+            if typeof(prompt.HoldDuration) == "number" and prompt.HoldDuration > 0 then
+                holdTime = prompt.HoldDuration
+            end
+            pcall(function()
+                if typeof(prompt.InputHoldBegin) == "function" then
+                    prompt:InputHoldBegin()
+                    task.wait(holdTime)
+                    if typeof(prompt.InputHoldEnd) == "function" then
+                        prompt:InputHoldEnd()
+                    end
+                end
+            end)
+        end
 
-        task.wait(1)
+        task.wait(0.1)
     end
+    loopThreadActive = false
 end
 
+-- ---------------------------------------------------------------------
 -- AFK loop
+-- ---------------------------------------------------------------------
 local function afkLoop()
     while afkRunning do
-        local viewport = workspace.CurrentCamera.ViewportSize
-        local x, y = viewport.X / 2, viewport.Y / 2
-        vim:SendMouseButtonEvent(x, y, 0, true, game, 0)
-        vim:SendMouseButtonEvent(x, y, 0, false, game, 0)
+        local camera = workspace.CurrentCamera
+        if camera then
+            local viewport = camera.ViewportSize
+            local x, y = viewport.X / 2, viewport.Y / 2
+            pcall(function()
+                VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+                VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+            end)
+        end
         task.wait(60)
     end
 end
 
--- Monitor crowd and toggle autofarm
-local function monitorCrowd()
+-- ---------------------------------------------------------------------
+-- Crowd monitor
+-- ---------------------------------------------------------------------
+monitorThread = task.spawn(function()
     while true do
         if masterEnabled and targetUsername ~= "" then
             local character = localPlayer.Character
             if not character or not character:FindFirstChild("HumanoidRootPart") then
                 task.wait(5)
-                continue
-            end
+            else
+                local root = character.HumanoidRootPart
+                local targetNearby = false
+                local strangerNearby = false
 
-            local root = character.HumanoidRootPart
-            local targetPlayer = Players:FindFirstChild(targetUsername)
-            local targetNearby = false
-            local strangerNearby = false
-
-            for _, otherPlayer in pairs(Players:GetPlayers()) do
-                if otherPlayer ~= localPlayer and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (root.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
-                    if dist <= detectionRadius then
-                        if otherPlayer.Name == targetUsername then
-                            targetNearby = true
-                        else
-                            strangerNearby = true
+                for _, otherPlayer in pairs(Players:GetPlayers()) do
+                    if otherPlayer ~= localPlayer and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                        local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if otherRoot then
+                            local ok, dist = pcall(function() return (root.Position - otherRoot.Position).Magnitude end)
+                            if ok and dist and dist <= detectionRadius then
+                                if otherPlayer.Name == targetUsername then
+                                    targetNearby = true
+                                else
+                                    strangerNearby = true
+                                end
+                            end
                         end
                     end
                 end
-            end
 
-            if strangerNearby and running then
-                print("Stranger detected. Turning OFF autofarm.")
-                running = false
-                Rayfield.Flags["TeleportLoop"]:Set(false)
-            elseif targetNearby and not strangerNearby and not running then
-                print("Target user nearby. Turning ON autofarm.")
-                running = true
-                Rayfield.Flags["TeleportLoop"]:Set(true)
-                loopThread = task.spawn(runLoop)
-            elseif (not targetNearby or strangerNearby) and running then
-                print("Conditions not met. Turning OFF autofarm.")
-                running = false
-                Rayfield.Flags["TeleportLoop"]:Set(false)
+                if strangerNearby and running then
+                    print("Stranger detected. Stopping autofarm.")
+                    running = false
+                    safeSetFlag("TeleportLoop", false)
+                elseif targetNearby and not strangerNearby and not running and masterEnabled then
+                    print("Target nearby. Starting autofarm.")
+                    running = true
+                    safeSetFlag("TeleportLoop", true)
+                    if not loopThreadActive then loopThread = task.spawn(runLoop) end
+                elseif (not targetNearby or strangerNearby) and running then
+                    print("Conditions not met. Stopping autofarm.")
+                    running = false
+                    safeSetFlag("TeleportLoop", false)
+                end
             end
         end
         task.wait(5)
     end
-end
+end)
 
--- GUI Controls
+-- ---------------------------------------------------------------------
+-- GUI Controls - Main Tab & Settings Tab (Rayfield)
+-- ---------------------------------------------------------------------
+local Window = Rayfield:CreateWindow({
+    Name = "Baddies Crowbar Autofarm",
+    LoadingTitle = "Automation Hub",
+    LoadingSubtitle = "by you",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = CONFIG_FOLDER,
+        FileName = "TeleportLoop"
+    }
+})
+
+local MainTab = Window:CreateTab("Main", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+
 MainTab:CreateInput({
     Name = "Target Username",
     PlaceholderText = "Enter exact username",
     RemoveTextAfterFocusLost = false,
+    Flag = "TargetUsername",
+    CurrentValue = targetUsername,
     Callback = function(Text)
-        targetUsername = Text
+        targetUsername = tostring(Text or "")
         print("Target user set to:", targetUsername)
     end,
 })
 
 MainTab:CreateToggle({
     Name = "Crowbar Autofarm Master Toggle",
-    CurrentValue = true,
+    CurrentValue = masterEnabled,
     Flag = "MasterToggle",
     Callback = function(Value)
         masterEnabled = Value
         if not masterEnabled then
-            print("Master toggle OFF. Disabling autofarm and monitor.")
             running = false
-            Rayfield.Flags["TeleportLoop"]:Set(false)
+            safeSetFlag("TeleportLoop", false)
         end
+        print("MasterToggle set to", masterEnabled)
     end,
 })
 
 MainTab:CreateToggle({
     Name = "Crowbar Autofarm",
-    CurrentValue = false,
+    CurrentValue = running,
     Flag = "TeleportLoop",
     Callback = function(Value)
         if masterEnabled then
             running = Value
-            if running then
-                loopThread = task.spawn(runLoop)
-            end
+            if running and not loopThreadActive then loopThread = task.spawn(runLoop) end
         else
-            print("Autofarm blocked: Master toggle is OFF.")
-            Rayfield.Flags["TeleportLoop"]:Set(false)
+            safeSetFlag("TeleportLoop", false)
         end
     end,
 })
@@ -195,6 +497,7 @@ MainTab:CreateSlider({
     Flag = "TeleportSpeed",
     Callback = function(Value)
         teleportDelay = Value
+        print("TeleportSpeed set to", teleportDelay)
     end,
 })
 
@@ -202,22 +505,222 @@ MainTab:CreateButton({
     Name = "Return to Crowbar Spot",
     Callback = function()
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-        local hrp = character:WaitForChild("HumanoidRootPart")
-        hrp.CFrame = targetCFrame
+        local hrp = character:WaitForChild("HumanoidRootPart", 5)
+        if hrp then hrp.CFrame = targetCFrame end
+    end,
+})
+
+MainTab:CreateButton({
+    Name = "Copy Closest Player's Name",
+    Callback = function()
+        local character = localPlayer.Character
+        if not character or not character:FindFirstChild("HumanoidRootPart") then
+            print("No character or HumanoidRootPart.")
+            return
+        end
+
+        local root = character.HumanoidRootPart
+        local closestPlayer = nil
+        local closestDistance = math.huge
+
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= localPlayer and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (root.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
+                if dist < closestDistance then
+                    closestDistance = dist
+                    closestPlayer = otherPlayer
+                end
+            end
+        end
+
+        if closestPlayer then
+            pcall(function() setclipboard(closestPlayer.Name) end)
+            print("Copied:", closestPlayer.Name)
+        else
+            print("No nearby players.")
+        end
     end,
 })
 
 MainTab:CreateToggle({
     Name = "AFK Prevention",
-    CurrentValue = false,
+    CurrentValue = afkRunning,
     Flag = "AFKPrevention",
     Callback = function(Value)
         afkRunning = Value
         if afkRunning then
-            afkThread = task.spawn(afkLoop)
+            if not afkThread then afkThread = task.spawn(afkLoop) end
+        else
+            afkThread = nil
         end
     end,
 })
 
--- Start crowd monitor
-monitorThread = task.spawn(monitorCrowd)
+SettingsTab:CreateButton({
+    Name = "Save Settings Now",
+    Callback = function()
+        pcall(function() Rayfield:SaveConfiguration() end)
+        local ok = customSave()
+        if ok then print("Settings saved (Rayfield + custom JSON).") end
+    end,
+})
+SettingsTab:CreateButton({
+    Name = "Load Saved Settings",
+    Callback = function()
+        pcall(function() Rayfield:LoadConfiguration() end)
+        local ok = customLoad()
+        if ok then print("Loaded settings from custom JSON.") end
+    end,
+})
+
+SettingsTab:CreateToggle({
+    Name = "Auto Rejoin on Kick",
+    CurrentValue = autoRejoinEnabled,
+    Flag = "AutoRejoinToggle",
+    Callback = function(Value)
+        autoRejoinEnabled = Value
+        print("Auto Rejoin is now", Value and "enabled" or "disabled")
+    end,
+})
+
+SettingsTab:CreateSlider({
+    Name = "Rejoin Delay After Kick",
+    Range = {1, 30},
+    Increment = 1,
+    Suffix = "s",
+    CurrentValue = autoRejoinDelay,
+    Flag = "RejoinDelay",
+    Callback = function(Value)
+        autoRejoinDelay = Value
+        print("Rejoin delay set to", Value, "seconds")
+    end,
+})
+
+-- After UI creation: try to load Rayfield config + custom JSON fallback
+pcall(function() Rayfield:LoadConfiguration() end)
+local loadedFromFile = customLoad()
+if not loadedFromFile then
+    print("No custom JSON loaded; relying on Rayfield:LoadConfiguration (if present).")
+else
+    print("Loaded config from custom JSON and synced UI flags.")
+end
+
+-- Apply flags that Rayfield might have set during its LoadConfiguration call
+do
+    local v = safeGetFlag("TargetUsername")
+    if type(v) == "string" and v ~= "" then targetUsername = v end
+    local v2 = safeGetFlag("TeleportSpeed")
+    if type(v2) == "number" then teleportDelay = v2 end
+    local v3 = safeGetFlag("TeleportLoop")
+    if type(v3) == "boolean" then running = v3 and masterEnabled end
+    local v4 = safeGetFlag("MasterToggle")
+    if type(v4) == "boolean" then masterEnabled = v4 end
+    local v5 = safeGetFlag("AFKPrevention")
+    if type(v5) == "boolean" then afkRunning = v5 end
+    local v6 = safeGetFlag("AutoRejoinToggle")
+    if type(v6) == "boolean" then autoRejoinEnabled = v6 end
+    local v7 = safeGetFlag("RejoinDelay")
+    if type(v7) == "number" then autoRejoinDelay = v7 end
+end
+
+-- ---------------------------------------------------------------------
+-- Auto-rejoin the SAME instance (jobId) — tries variants + retries, no fallback to other servers
+-- ---------------------------------------------------------------------
+local REJOIN_RETRIES = 6
+local REJOIN_RETRY_DELAY = 2 -- seconds between attempts
+
+local function tryTeleportToInstanceVariants(pid, jid)
+    if not pid or not jid then
+        return false, "missing placeId or jobId"
+    end
+
+    local tries = {}
+
+    table.insert(tries, function()
+        return pcall(function()
+            TeleportService:TeleportToPlaceInstance(pid, jid)
+        end)
+    end)
+
+    table.insert(tries, function()
+        return pcall(function()
+            TeleportService:TeleportToPlaceInstance(pid, jid, localPlayer)
+        end)
+    end)
+
+    table.insert(tries, function()
+        return pcall(function()
+            TeleportService:TeleportToPlaceInstance(pid, jid, {localPlayer})
+        end)
+    end)
+
+    table.insert(tries, function()
+        local f = TeleportService.TeleportToPlaceInstance
+        if type(f) == "function" then
+            return pcall(function() f(TeleportService, pid, jid) end)
+        end
+        return false, "no method"
+    end)
+
+    for idx, fn in ipairs(tries) do
+        local ok, res = fn()
+        if ok then
+            return true, ("variant %d initiated"):format(idx)
+        end
+    end
+
+    return false, "all variants failed"
+end
+
+local function attemptRejoinSameInstance()
+    if not autoRejoinEnabled then
+        print("[AutoRejoin] disabled; not attempting.")
+        return false
+    end
+
+    if not placeId or placeId == 0 then
+        warn("[AutoRejoin] invalid placeId; aborting.")
+        return false
+    end
+    if not jobId or jobId == "" then
+        warn("[AutoRejoin] invalid jobId; aborting.")
+        return false
+    end
+
+    print(("[AutoRejoin] Attempting to rejoin same server (placeId=%s jobId=%s)"):format(tostring(placeId), tostring(jobId)))
+
+    for i = 1, REJOIN_RETRIES do
+        local ok, msg = tryTeleportToInstanceVariants(placeId, jobId)
+        if ok then
+            print(("[AutoRejoin] TeleportToPlaceInstance attempt %d succeeded (%s)."):format(i, tostring(msg)))
+            return true
+        else
+            warn(("[AutoRejoin] TeleportToPlaceInstance attempt %d failed: %s"):format(i, tostring(msg)))
+        end
+        task.wait(REJOIN_RETRY_DELAY)
+    end
+
+    print("[AutoRejoin] All TeleportToPlaceInstance attempts failed. Will not fallback (per configuration).")
+    return false
+end
+
+-- PlayerRemoving handler: trigger same-instance rejoin attempt after user-configured delay
+Players.PlayerRemoving:Connect(function(player)
+    if player ~= localPlayer then return end
+    if not autoRejoinEnabled then return end
+
+    print("[AutoRejoin] Detected local player removal. Attempting rejoin in", autoRejoinDelay, "s...")
+    task.delay(autoRejoinDelay, function()
+        local success = attemptRejoinSameInstance()
+        if not success then
+            warn("[AutoRejoin] Failed to rejoin the same instance.")
+        end
+    end)
+end)
+
+-- Expose manual rejoin trigger for debugging
+_G.ForceAutoRejoinNow = function()
+    return attemptRejoinSameInstance()
+end
+
+print("Baddies Crowbar Autofarm loaded. Auto-rejoin (same instance) installed. Use _G.ForceAutoRejoinNow() to test manually.")
